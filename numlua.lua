@@ -98,33 +98,23 @@ function tensor_prototype:shapeEqualTo(another)
     return arrayCompare(self._shape, another._shape)
 end
 
-function tensor_prototype:iterateIndexArray(func)
-    for i, v in ipairs(self) do
-        if isTensor(v) then
-            local subFunc = function(...)
-                func(i, ...)
-            end
-            v:iterateIndexArray(subFunc)
-        else
-            func(i)
-        end
-    end
-end
-
-function tensor_prototype:negative()
+function tensor_prototype:copy()
     local newTensor = {}
     for i, v in ipairs(self) do
         if isTensor(v) then
-            newTensor[i] = v:negative()
+            newTensor[i] = v:copy()
         else
-            newTensor[i] = -v
+            newTensor[i] = v
         end
     end
 
-    -- Sign with metatable
     newTensor._shape = self._shape
     setmetatable(newTensor, tensor_prototype)
     return newTensor
+end
+
+function tensor_prototype:negative()
+    return (-1) * self
 end
 
 tensor_prototype.__eq = function(a, b)
@@ -141,6 +131,7 @@ end
 
 -- Overload operator +
 tensor_prototype.__add = function(a, b)
+    assertTensor(a)
     assertTensor(b)
     local newTensor = {}
     if not a:shapeEqualTo(b) then
@@ -162,6 +153,33 @@ tensor_prototype.__sub = function(a, b)
     return a + b:negative()
 end
 
+-- Multiply with num
+local function tensorTimesNum(t, n)
+    assertTensor(t)
+    if type(n) ~= "number" then error("n is not a number") end
+
+    local newTensor = {}
+    for i, v in ipairs(t) do
+        if isTensor(v) then
+            newTensor[i] = tensorTimesNum(v, n)
+        else
+            newTensor[i] = v * n
+        end
+    end
+
+    newTensor._shape = t._shape
+    setmetatable(newTensor, tensor_prototype)
+    return newTensor
+end
+-- Overload operator *
+tensor_prototype.__mul = function(a, b)
+    if (type(a) == "number") and isTensor(b) then
+        return tensorTimesNum(b, a)
+    elseif (type(b) == "number") and isTensor(a) then
+        return tensorTimesNum(a, b)
+    end
+end
+
 -- Overload string transformation
 tensor_prototype.__tostring = function(t)
     local strList = {}
@@ -181,6 +199,42 @@ end
 
 function numlua.isTensor(obj)
     return isTensor(obj)
+end
+
+function numlua.numbers(shapeArray, n)
+    if #shapeArray == 1 then
+        local len = shapeArray[1]
+        local arr = {}
+        for i=1, len do
+            arr[i] = n
+        end
+
+        arr._shape = {len}
+        setmetatable(arr, tensor_prototype)
+        return arr
+    elseif #shapeArray > 1 then
+        local len = shapeArray[1]
+
+        childShape = arrayCopy(shapeArray)
+        table.remove(childShape, 1)
+
+        local arr = {}
+        for i=1, len do
+            arr[i] = numlua.numbers(childShape, n)
+        end
+
+        arr._shape = shapeArray
+        setmetatable(arr, tensor_prototype)
+        return arr
+    end
+end
+
+function numlua.zeros(shapeArray)
+    return numlua.numbers(shapeArray, 0)
+end
+
+function numlua.ones(shapeArray)
+    return numlua.numbers(shapeArray, 1)
 end
 
 return numlua
